@@ -1,4 +1,4 @@
-module gorm-fixtures
+module github.com/anboo/gorm-fixtures
 
 go 1.21
 

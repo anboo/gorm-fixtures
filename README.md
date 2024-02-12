@@ -1,7 +1,10 @@
 ## Gorm fixtures loader
 Only for MySQL or PostgreSQL
 
-Example:
+## Install
+`go get github.com/anboo/gorm-fixtures@latest`
+
+## Usage:
 ```go
 package main
 
@@ -10,7 +13,7 @@ import (
 	"fmt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm_fixtures"
+	"github.com/anboo/gorm-fixtures"
 )
 
 // User represents the user model.
