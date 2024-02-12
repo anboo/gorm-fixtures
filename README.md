@@ -1,6 +1,13 @@
 ## Gorm fixtures loader
 Only for MySQL or PostgreSQL
 
+## Why?
+Our project is a fixture loader for GORM, a popular ORM library for Go. It allows developers to define fixtures, which are sets of pre-defined data, and load them into the database for testing purposes. Fixtures can represent various entities in the database, such as users, products, or orders.
+
+The fixture loader provides functionalities to load specific fixtures or their dependencies, making it suitable for integration testing scenarios. For instance, before running integration tests, developers can use the fixture loader to populate the database with test data by loading all fixtures or only specific ones relevant to the test case. After the test execution, the fixture loader can also be used to clean up the database by removing the test data.
+
+By integrating this fixture loader into our testing workflow, we ensure that our integration tests run on a consistent and predictable database state, helping us to identify potential issues and ensure the reliability of our applications. Additionally, it facilitates rapid development and testing iterations by automating the setup and teardown of test data.
+
 ## Install
 `go get github.com/anboo/gorm-fixtures@latest`
 
@@ -130,4 +137,15 @@ func main() {
 
 	fmt.Println("Fixtures loaded successfully!")
 }
+```
+
+### Load one fixture with all dependencies
+```go
+fixtureLoader := gorm_fixtures.NewFixtureLoader(db, &UserFixture{}, &AccessTokenFixture{})
+fixtureLoader.LoadFixtureByName("AccessTokenFixture")
+```
+
+### Or load specific struct fixture
+```go
+fixtureLoader.LoadFixture(&AccessTokenFixture{})
 ```

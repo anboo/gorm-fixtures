@@ -2,6 +2,7 @@ package gorm_fixtures
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/schollz/progressbar/v3"
@@ -13,6 +14,10 @@ type Config struct {
 	ResetAutoIncrements bool
 	TruncateAllTables   bool
 }
+
+var (
+	ErrFixtureWithNameNotFound = errors.New("fixture not found")
+)
 
 // Fixture представляет собой фикстуру для загрузки в базу данных.
 type Fixture interface {
@@ -78,6 +83,55 @@ func (fl *FixtureLoader) Load(ctx context.Context, cfg Config) error {
 		}
 	}
 	return nil
+}
+
+func (fl *FixtureLoader) LoadFixture(c context.Context, fixture Fixture) error {
+	ctx := NewLoadCtx(c)
+
+	for _, dependedFixture := range fl.getAllDependencies(fixture) {
+		err := dependedFixture.Load(ctx, fl.db)
+		if err != nil {
+			return fmt.Errorf("load depended fixture %s: %w", dependedFixture.Name(), err)
+		}
+	}
+	return fixture.Load(ctx, fl.db)
+}
+
+func (fl *FixtureLoader) LoadFixtureByName(c context.Context, name string) error {
+	var fixture Fixture
+
+	for _, fixture = range fl.fixtures {
+		if fixture.Name() == name {
+			break
+		}
+	}
+
+	if fixture == nil {
+		return ErrFixtureWithNameNotFound
+	}
+
+	return fl.LoadFixture(c, fixture)
+}
+
+func (fl *FixtureLoader) getAllDependencies(fixture Fixture) []Fixture {
+	var allDependencies []Fixture
+
+	var getDependencies func(Fixture)
+	getDependencies = func(f Fixture) {
+		dependentFixture, ok := f.(DependentFixture)
+		if !ok {
+			return
+		}
+		dependencies := dependentFixture.GetRequiredRelations()
+		for _, dep := range dependencies {
+			allDependencies = append(allDependencies, dep)
+			getDependencies(dep)
+		}
+	}
+
+	getDependencies(fixture)
+
+	return allDependencies
 }
 
 func (fl *FixtureLoader) getFixtures() []Fixture {
