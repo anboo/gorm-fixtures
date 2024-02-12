@@ -1,15 +1,22 @@
 package gorm_fixtures
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/schollz/progressbar/v3"
 	"gorm.io/gorm"
 )
 
+type Config struct {
+	ShowProgressBar     bool
+	ResetAutoIncrements bool
+	TruncateAllTables   bool
+}
+
 // Fixture представляет собой фикстуру для загрузки в базу данных.
 type Fixture interface {
-	Load(db *gorm.DB) error
+	Load(c *LoadCtx, db *gorm.DB) error
 	Name() string
 }
 
@@ -20,36 +27,55 @@ type DependentFixture interface {
 }
 
 type FixtureLoader struct {
-	DB       *gorm.DB
-	Fixtures []Fixture
+	db       *gorm.DB
+	fixtures []Fixture
+	cleaner  *Cleaner
 }
 
 func NewFixtureLoader(db *gorm.DB, fixtures ...Fixture) *FixtureLoader {
 	return &FixtureLoader{
-		DB:       db,
-		Fixtures: fixtures,
+		db:       db,
+		fixtures: fixtures,
+		cleaner:  NewCleaner(db),
 	}
 }
 
-func (fl *FixtureLoader) Load() error {
+func (fl *FixtureLoader) Load(ctx context.Context, cfg Config) error {
 	fixtures := fl.getFixtures()
 
-	totalFixtures := len(fixtures)
-	bar := progressbar.NewOptions(totalFixtures,
-		progressbar.OptionSetWriter(ansiWriter{}),
-		progressbar.OptionShowBytes(false),
-		progressbar.OptionSetDescription("[INFO] Loading fixtures"),
-		progressbar.OptionShowCount(),
-		progressbar.OptionShowIts(),
-		progressbar.OptionSetPredictTime(true),
-		progressbar.OptionEnableColorCodes(true),
-	)
-	for _, fixture := range fixtures {
-		bar.Describe(fmt.Sprintf("[INFO] Loading fixture: %s", fixture.Name()))
-		if err := fixture.Load(fl.DB); err != nil {
-			return err
+	var bar *progressbar.ProgressBar
+	if cfg.ShowProgressBar {
+		bar = createProgressBar(len(fixtures))
+	}
+
+	if cfg.TruncateAllTables {
+		err := fl.cleaner.TruncateAllTables()
+		if err != nil {
+			return fmt.Errorf("truncate all tables: %w", err)
 		}
-		bar.Add(1)
+	}
+
+	if cfg.ResetAutoIncrements {
+		err := fl.cleaner.ResetAutoIncrementsCounters()
+		if err != nil {
+			return fmt.Errorf("reset auto increments: %w", err)
+		}
+	}
+
+	loadCtx := NewLoadCtx(ctx)
+
+	for _, fixture := range fixtures {
+		if cfg.ShowProgressBar {
+			bar.Describe(fmt.Sprintf("[INFO] Loading fixture: %s", fixture.Name()))
+		}
+
+		if err := fixture.Load(loadCtx, fl.db); err != nil {
+			return fmt.Errorf("loading fixture %s: %w", fixture.Name(), err)
+		}
+
+		if cfg.ShowProgressBar {
+			_ = bar.Add(1)
+		}
 	}
 	return nil
 }
@@ -57,7 +83,7 @@ func (fl *FixtureLoader) Load() error {
 func (fl *FixtureLoader) getFixtures() []Fixture {
 	// Проверяем, реализует ли фикстура DependentFixture
 	hasDependencies := false
-	for _, fixture := range fl.Fixtures {
+	for _, fixture := range fl.fixtures {
 		_, ok := fixture.(DependentFixture)
 		if ok {
 			hasDependencies = true
@@ -69,7 +95,7 @@ func (fl *FixtureLoader) getFixtures() []Fixture {
 	if hasDependencies {
 		// Создаем карту зависимостей между фикстурами
 		dependencyMap := make(map[Fixture]bool)
-		for _, fixture := range fl.Fixtures {
+		for _, fixture := range fl.fixtures {
 			dependentFixture, ok := fixture.(DependentFixture)
 			if ok {
 				dependencyMap[fixture] = true
@@ -102,12 +128,5 @@ func (fl *FixtureLoader) getFixtures() []Fixture {
 		return sortedFixtures
 	}
 
-	return fl.Fixtures
-}
-
-type ansiWriter struct{}
-
-// Write записывает данные в терминал с использованием ANSI цветов.
-func (w ansiWriter) Write(p []byte) (n int, err error) {
-	return fmt.Print(string(p))
+	return fl.fixtures
 }

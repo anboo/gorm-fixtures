@@ -12,6 +12,10 @@ type Cleaner struct {
 	db *gorm.DB
 }
 
+func NewCleaner(db *gorm.DB) *Cleaner {
+	return &Cleaner{db: db}
+}
+
 func (c *Cleaner) ResetAutoIncrementsCounters() error {
 	tables, err := c.getTables()
 	if err != nil {
